@@ -1,0 +1,36 @@
+simulation:
+  timestep: 0.0041666667
+  gravity: -9.81
+  gui: false
+  max_steps_per_episode: 1000
+  robot_urdf: kuka_iiwa/model.urdf
+  base_position: [0.0, 0.0, 0.0]
+  base_orientation_euler: [0.0, 0.0, 0.0]
+
+model:
+  architecture: mlp
+  input_dim: 32
+  action_dim: 7
+  hidden_sizes: [256, 256]
+  learning_rate: 0.0003
+  weight_decay: 0.0
+  gamma: 0.99
+  seed: 42
+
+gepa:
+  llm_provider: mock
+  population_size: 8
+  pareto_front_k: 4
+  mutation_rate: 0.3
+  reflection_weight: 0.5
+  evaluation_episodes: 1
+  max_iterations: 5
+  base_prompt: "Control the robot arm to reach the target smoothly."
+
+experiment:
+  project_name: gepa_behavior
+  log_dir: ./runs
+  checkpoint_dir: ./checkpoints
+  seed: 42
+  episodes: 3
+  steps_per_episode: 200
