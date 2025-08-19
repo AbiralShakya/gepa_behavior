@@ -25,3 +25,7 @@ h5py>=3.10
 # CLI & tooling
 typer>=0.12
 pytest>=8.2
+
+# LLM providers
+openai>=1.30
+tenacity>=8.2

@@ -47,39 +47,37 @@ class GEPAOptimizer:
         return [PromptCandidate(p, self.evaluate_fn(p)) for p in prompts]
 
     def pareto_select(self, candidates: List[PromptCandidate]) -> List[PromptCandidate]:
-        # Simple sort by lexicographic on metrics (descending)
         return sorted(candidates, key=lambda c: c.pareto_key())[: self.pareto_front_k]
 
     def mutate(self, prompt: Prompt) -> Prompt:
         if random.random() > self.mutation_rate:
             return prompt
-        # Simple mutation heuristic: append a modifier token
-        modifiers = [
-            " with smooth motions",
-            " prioritizing stability",
-            " minimizing energy",
-            " with faster convergence",
-        ]
-        return Prompt(prompt.text + random.choice(modifiers))
+        # LLM-driven mutation for richer edits
+        variants = self.llm.generate(
+            f"Improve this robot control instruction for stability and reward, keep it concise:\n{prompt.text}",
+            n=1,
+        )
+        return Prompt(variants[0] if variants else prompt.text)
 
     def reflect(self, prompt: Prompt, feedback: Dict[str, float]) -> Prompt:
-        # Lightweight reflection: add qualitative hint
-        if feedback.get("reward", 0.0) < 0.0:
-            return Prompt(prompt.text + " avoid oscillations")
-        return prompt
+        # LLM-driven reflection: provide feedback context
+        fb = ", ".join([f"{k}={v:.3f}" for k, v in feedback.items()])
+        variants = self.llm.generate(
+            f"Given metrics ({fb}), revise the instruction to reduce oscillations and improve smoothness while preserving task intent:\n{prompt.text}",
+            n=1,
+        )
+        return Prompt(variants[0] if variants else prompt.text)
 
     def step(self, prompts: List[Prompt]) -> List[Prompt]:
         evaluated = self.evaluate_population(prompts)
         front = self.pareto_select(evaluated)
         seeds = [c.prompt for c in front]
-        # Generate offspring via mutation and reflection
         offspring: List[Prompt] = []
         for s in seeds:
             mutated = self.mutate(s)
             fb = self.evaluate_fn(mutated)
             reflected = self.reflect(mutated, fb)
             offspring.append(reflected)
-        # Fill to population size
         while len(offspring) < self.population_size:
             offspring.append(random.choice(seeds))
         return offspring[: self.population_size]

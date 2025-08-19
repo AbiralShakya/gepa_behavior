@@ -10,7 +10,13 @@ from gepa.utils.config import Config, ConfigLoader
 from gepa.utils.logging_utils import Logger
 from gepa.sim import BulletSimEnv
 from gepa.models import TorchBehaviorModel
-from gepa.gepa import GEPAOptimizer, MockLLM, Prompt
+from gepa.gepa import GEPAOptimizer, Prompt
+from gepa.gepa.llm_providers import MockLLM
+
+try:
+    from gepa.gepa.llm_providers import OpenAILLM
+except Exception:
+    OpenAILLM = None
 
 try:
     from gepa.sim.robosuite_env import RoboSuiteEnv
@@ -116,6 +122,8 @@ def run(
     backend: Optional[str] = typer.Option(None, help="Backend override: pybullet|robosuite"),
     camera: bool = typer.Option(False, help="Enable camera (pybullet only)"),
     train_bc_steps: int = typer.Option(0, help="Train supervised BC steps from collected buffer"),
+    llm: str = typer.Option("mock", help="LLM provider: mock|openai"),
+    openai_model: str = typer.Option("gpt-4o-mini", help="OpenAI model name"),
 ):
     base_cfg = Config()
     cfg = ConfigLoader.merge(base_cfg, ConfigLoader.from_yaml(config).to_dict() if config else None)
@@ -168,9 +176,17 @@ def run(
             "energy": energy / n,
         }
 
+    # Provider selection
+    if llm == "openai":
+        if OpenAILLM is None:
+            raise RuntimeError("OpenAI provider requested but openai package not installed.")
+        provider = OpenAILLM(model=openai_model)
+    else:
+        provider = MockLLM()
+
     if gepa_iters > 0:
         optimizer = GEPAOptimizer(
-            llm=MockLLM(),
+            llm=provider,
             population_size=cfg.gepa.population_size,
             pareto_front_k=cfg.gepa.pareto_front_k,
             mutation_rate=cfg.gepa.mutation_rate,
