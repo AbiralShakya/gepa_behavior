@@ -16,6 +16,8 @@ model:
   weight_decay: 0.0
   gamma: 0.99
   seed: 42
+  prompt_conditioning: true
+  prompt_embed_dim: 128
 
 gepa:
   llm_provider: mock

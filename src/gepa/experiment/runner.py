@@ -37,15 +37,17 @@ def make_model(cfg: Config) -> TorchBehaviorModel:
         learning_rate=cfg.model.learning_rate,
         weight_decay=cfg.model.weight_decay,
         device="cpu",
+        prompt_conditioning=cfg.model.prompt_conditioning,
+        prompt_embed_dim=cfg.model.prompt_embed_dim,
     )
 
 
-def rollout(env: BulletSimEnv, model: TorchBehaviorModel, steps: int) -> float:
+def rollout(env: BulletSimEnv, model: TorchBehaviorModel, steps: int, prompt: Optional[str]) -> float:
     obs = env.get_observation()
     total_reward = 0.0
     for _ in range(steps):
         obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-        action = model.select_action(obs_t).action.squeeze(0).numpy()
+        action = model.select_action(obs_t, prompt=prompt).action.squeeze(0).numpy()
         result = env.step(action)
         obs = result.observation
         total_reward += result.reward
@@ -62,6 +64,7 @@ def run(
     robot: Optional[str] = typer.Option(None, help="Override robot URDF path"),
     arch: Optional[str] = typer.Option(None, help="Model architecture override"),
     gepa_iters: int = typer.Option(0, help="Number of GEPA iterations"),
+    prompt: Optional[str] = typer.Option(None, help="Manual prompt override"),
 ):
     base_cfg = Config()
     cfg = ConfigLoader.merge(base_cfg, ConfigLoader.from_yaml(config).to_dict() if config else None)
@@ -83,12 +86,13 @@ def run(
     cfg.model.action_dim = int(env.num_joints)
     model = make_model(cfg)
 
-    # Simple GEPA evaluation function: average reward over N episodes
+    active_prompt = prompt or cfg.gepa.base_prompt
+
     def evaluate_prompt(p: Prompt):
         total = 0.0
         for _ in range(max(1, cfg.gepa.evaluation_episodes)):
             env.reset()
-            r = rollout(env, model, steps=cfg.experiment.steps_per_episode)
+            r = rollout(env, model, steps=cfg.experiment.steps_per_episode, prompt=p.text)
             total += r
         return {"reward": total / max(1, cfg.gepa.evaluation_episodes)}
 
@@ -102,8 +106,11 @@ def run(
             evaluate_fn=evaluate_prompt,
         )
         best = optimizer.optimize(cfg.gepa.base_prompt, iterations=gepa_iters)
+        # Pick top-1 prompt as active
+        if len(best) > 0:
+            active_prompt = best[0].prompt.text
         for i, cand in enumerate(best):
-            logger.log_metrics(i, {f"gepa_reward": cand.scores.get("reward", 0.0)})
+            logger.log_metrics(i, {"gepa_reward": cand.scores.get("reward", 0.0)})
 
     for ep in range(cfg.experiment.episodes):
         obs = env.reset()
@@ -113,7 +120,7 @@ def run(
         for t in range(cfg.experiment.steps_per_episode):
             observations.append(obs.copy())
             obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-            action = model.select_action(obs_t).action.squeeze(0).numpy()
+            action = model.select_action(obs_t, prompt=active_prompt).action.squeeze(0).numpy()
             actions.append(action.copy())
             result = env.step(action)
             obs = result.observation
@@ -121,7 +128,7 @@ def run(
             if result.done:
                 break
         logger.log_trajectory(f"episode_{ep}", observations, actions, rewards)
-        logger.log_metrics(ep, {"episode_reward": float(sum(rewards))})
+        logger.log_metrics(ep, {"episode_reward": float(sum(rewards)), "prompt_len": len(active_prompt or "")})
 
     logger.close()
     env.close()

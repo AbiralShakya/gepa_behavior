@@ -27,6 +27,8 @@ class ModelConfig:
     weight_decay: float = 0.0
     gamma: float = 0.99
     seed: int = 42
+    prompt_conditioning: bool = True
+    prompt_embed_dim: int = 128
 
 
 @dataclass
@@ -75,7 +77,6 @@ class ConfigLoader:
 
     @staticmethod
     def from_dict(cfg_dict: Dict[str, Any]) -> Config:
-        # Deep copy to avoid side effects
         data = copy.deepcopy(cfg_dict)
 
         def update_dataclass(dc, updates: Optional[Dict[str, Any]]):
