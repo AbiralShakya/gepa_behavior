@@ -8,6 +8,7 @@ import copy
 
 @dataclass
 class SimulationConfig:
+    backend: str = "pybullet"  # pybullet | robosuite
     timestep: float = 1.0 / 240.0
     gravity: float = -9.81
     gui: bool = False
@@ -15,6 +16,13 @@ class SimulationConfig:
     robot_urdf: str = "kuka_iiwa/model.urdf"
     base_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     base_orientation_euler: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    enable_camera: bool = False
+    camera_width: int = 128
+    camera_height: int = 128
+    camera_fov: float = 60.0
+    camera_distance: float = 1.5
+    camera_yaw: float = 45.0
+    camera_pitch: float = -35.0
 
 
 @dataclass

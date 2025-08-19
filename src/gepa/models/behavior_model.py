@@ -18,7 +18,7 @@ class ActionOutput:
 
 
 class BaseBehaviorModel:
-    def select_action(self, observation: torch.Tensor, prompt: Optional[str] = None) -> ActionOutput:
+    def select_action(self, observation: torch.Tensor, prompt: Optional[str] = None, extra_features: Optional[torch.Tensor] = None) -> ActionOutput:
         raise NotImplementedError
 
     def parameters(self):
@@ -37,13 +37,19 @@ class TorchBehaviorModel(BaseBehaviorModel):
         device: str = "cpu",
         prompt_conditioning: bool = False,
         prompt_embed_dim: int = 128,
+        extra_input_dim: int = 0,
     ) -> None:
         self.device = torch.device(device)
         self.architecture = architecture
         self.prompt_conditioning = prompt_conditioning
         self.prompt_embed_dim = prompt_embed_dim
+        self.extra_input_dim = extra_input_dim
 
-        effective_input_dim = input_dim + (prompt_embed_dim if prompt_conditioning and architecture == "mlp" else 0)
+        effective_input_dim = input_dim
+        if prompt_conditioning and architecture == "mlp":
+            effective_input_dim += prompt_embed_dim
+        if architecture == "mlp" and extra_input_dim > 0:
+            effective_input_dim += extra_input_dim
 
         if architecture == "mlp":
             self.policy: nn.Module = MLPPolicy(effective_input_dim, action_dim, hidden_sizes)
@@ -68,30 +74,44 @@ class TorchBehaviorModel(BaseBehaviorModel):
         with torch.no_grad():
             return self.conditioner(prompts)
 
-    def select_action(self, observation: torch.Tensor, prompt: Optional[str] = None) -> ActionOutput:
+    def select_action(self, observation: torch.Tensor, prompt: Optional[str] = None, extra_features: Optional[torch.Tensor] = None) -> ActionOutput:
         self.policy.eval()
         with torch.no_grad():
             if self.architecture == "mlp":
                 x = observation.to(self.device)
+                parts = [x]
                 if self.conditioner is not None and prompt is not None:
                     emb = self._cond_embed([prompt])  # [1, D]
-                    x = torch.cat([x, emb], dim=-1)
-                logits = self.policy(x)
+                    parts.append(emb)
+                if extra_features is not None:
+                    parts.append(extra_features.to(self.device))
+                x_cat = torch.cat(parts, dim=-1)
+                logits = self.policy(x_cat)
             else:
                 logits = self.policy(observation.to(self.device))
                 if isinstance(logits, tuple):
                     logits = logits[0]
         return ActionOutput(action=logits.cpu(), aux={"prompt": prompt})
 
-    def train_step_supervised(self, obs: torch.Tensor, target_actions: torch.Tensor, prompts: Optional[List[str]] = None) -> Dict:
+    def train_step_supervised(
+        self,
+        obs: torch.Tensor,
+        target_actions: torch.Tensor,
+        prompts: Optional[List[str]] = None,
+        extra_features: Optional[torch.Tensor] = None,
+    ) -> Dict:
         self.policy.train()
         self.optimizer.zero_grad(set_to_none=True)
         if self.architecture == "mlp":
             x = obs.to(self.device)
+            parts = [x]
             if self.conditioner is not None and prompts is not None:
                 emb = self.conditioner(prompts)
-                x = torch.cat([x, emb], dim=-1)
-            pred = self.policy(x)
+                parts.append(emb)
+            if extra_features is not None:
+                parts.append(extra_features.to(self.device))
+            x_cat = torch.cat(parts, dim=-1)
+            pred = self.policy(x_cat)
         else:
             pred = self.policy(obs.to(self.device))
             if isinstance(pred, tuple):

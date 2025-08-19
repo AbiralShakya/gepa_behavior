@@ -36,6 +36,13 @@ class BulletSimEnv:
         base_position: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         base_orientation_euler: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         max_steps_per_episode: int = 1000,
+        enable_camera: bool = False,
+        camera_width: int = 128,
+        camera_height: int = 128,
+        camera_fov: float = 60.0,
+        camera_distance: float = 1.5,
+        camera_yaw: float = 45.0,
+        camera_pitch: float = -35.0,
     ) -> None:
         self.urdf_path = urdf_path
         self.gui = gui
@@ -44,6 +51,14 @@ class BulletSimEnv:
         self.base_position = base_position
         self.base_orientation_euler = base_orientation_euler
         self.max_steps_per_episode = max_steps_per_episode
+
+        self.enable_camera = enable_camera
+        self.camera_width = camera_width
+        self.camera_height = camera_height
+        self.camera_fov = camera_fov
+        self.camera_distance = camera_distance
+        self.camera_yaw = camera_yaw
+        self.camera_pitch = camera_pitch
 
         self.client_id: Optional[int] = None
         self.robot_id: Optional[int] = None
@@ -73,7 +88,6 @@ class BulletSimEnv:
         self.num_joints = p.getNumJoints(self.robot_id)
         self.step_count = 0
 
-        # Reset joint states to zero
         for j in range(self.num_joints):
             p.resetJointState(self.robot_id, j, targetValue=0.0, targetVelocity=0.0)
 
@@ -85,6 +99,33 @@ class BulletSimEnv:
         velocities = np.array([s[1] for s in joint_states], dtype=np.float32)
         obs = np.concatenate([positions, velocities], axis=0)
         return obs
+
+    def render_rgb(self) -> Optional[np.ndarray]:
+        if not self.enable_camera or p is None:
+            return None
+        view_matrix = p.computeViewMatrixFromYawPitchRoll(
+            cameraTargetPosition=self.base_position,
+            distance=self.camera_distance,
+            yaw=self.camera_yaw,
+            pitch=self.camera_pitch,
+            roll=0,
+            upAxisIndex=2,
+        )
+        aspect = self.camera_width / float(self.camera_height)
+        proj_matrix = p.computeProjectionMatrixFOV(
+            fov=self.camera_fov,
+            aspect=aspect,
+            nearVal=0.01,
+            farVal=10.0,
+        )
+        _, _, rgb, _, _ = p.getCameraImage(
+            width=self.camera_width,
+            height=self.camera_height,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix,
+        )
+        rgb = np.array(rgb, dtype=np.uint8)[:, :, :3]
+        return rgb
 
     def apply_action(self, action: np.ndarray) -> None:
         assert action.shape[0] == self.num_joints, (
@@ -105,11 +146,11 @@ class BulletSimEnv:
         self.step_count += 1
 
         observation = self.get_observation()
-
-        # Placeholder reward/termination for template
         reward = 0.0
         done = self.step_count >= self.max_steps_per_episode
         info: Dict = {"step": self.step_count}
+        if self.enable_camera:
+            info["rgb"] = self.render_rgb()
         return EnvStepResult(observation, reward, done, info)
 
     def close(self) -> None:
@@ -117,7 +158,6 @@ class BulletSimEnv:
             p.disconnect(self.client_id)
             self.client_id = None
 
-    # Context manager support
     def __enter__(self) -> "BulletSimEnv":
         self.reset()
         return self
