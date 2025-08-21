@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import h5py
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 
 @dataclass
@@ -28,8 +29,16 @@ class Logger:
 
     def log_metrics(self, step: int, metrics: Dict[str, Any]):
         if self._csv_writer is None:
-            self._csv_writer = csv.DictWriter(self._csv_fh, fieldnames=["step", *metrics.keys()])
+            self._csv_writer = csv.DictWriter(self._csv_fh, fieldnames=["step", *metrics.keys()], extrasaction="ignore")
             self._csv_writer.writeheader()
+        else:
+            # Expand CSV columns dynamically if new metric keys appear
+            existing = set(self._csv_writer.fieldnames or [])
+            incoming = set(["step", *metrics.keys()])
+            if not incoming.issubset(existing):
+                new_fieldnames = sorted(existing.union(incoming), key=lambda k: (k != "step", k))
+                self._csv_writer = csv.DictWriter(self._csv_fh, fieldnames=new_fieldnames, extrasaction="ignore")
+                self._csv_writer.writeheader()
         row = {"step": step, **metrics}
         self._csv_writer.writerow(row)
         self._csv_fh.flush()
@@ -55,3 +64,14 @@ class Logger:
         self._h5.close()
         if self._tb is not None:
             self._tb.close()
+
+    def log_image(self, tag: str, img: np.ndarray, step: int):
+        if self._tb is None:
+            return
+        try:
+            # Expect HxWxC in [0,255] uint8 or [0,1] float
+            if img.dtype != np.uint8:
+                img = (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
+            self._tb.add_image(tag, img.transpose(2, 0, 1), global_step=step)
+        except Exception:
+            pass

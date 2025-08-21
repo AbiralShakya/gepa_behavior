@@ -26,6 +26,25 @@ class SimulationConfig:
 
 
 @dataclass
+class GymConfig:
+    # Used when simulation.backend == "gym"
+    entry_point: str = ""
+    env_kwargs: Dict[str, Any] = field(default_factory=dict)
+    obs_key: Optional[str] = None
+
+
+@dataclass
+class WorldModelConfig:
+    enabled: bool = False
+    hidden_dim: int = 256
+    learning_rate: float = 1e-3
+    weight_decay: float = 0.0
+    rollout_horizon: int = 3
+    train_steps_per_episode: int = 100
+    batch_size: int = 256
+
+
+@dataclass
 class ModelConfig:
     architecture: str = "mlp"  # mlp | rnn | transformer
     input_dim: int = 32
@@ -37,6 +56,10 @@ class ModelConfig:
     seed: int = 42
     prompt_conditioning: bool = True
     prompt_embed_dim: int = 128
+    # When using diffusion policy adapter
+    use_diffusion_policy: bool = False
+    dp_ctor_path: str = ""  # module:Class or module:function
+    dp_ctor_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -69,6 +92,8 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     gepa: GEPAConfig = field(default_factory=GEPAConfig)
     experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
+    gym: GymConfig = field(default_factory=GymConfig)
+    world_model: WorldModelConfig = field(default_factory=WorldModelConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -100,6 +125,8 @@ class ConfigLoader:
         update_dataclass(cfg.model, data.get("model"))
         update_dataclass(cfg.gepa, data.get("gepa"))
         update_dataclass(cfg.experiment, data.get("experiment"))
+        update_dataclass(cfg.gym, data.get("gym"))
+        update_dataclass(cfg.world_model, data.get("world_model"))
         return cfg
 
     @staticmethod

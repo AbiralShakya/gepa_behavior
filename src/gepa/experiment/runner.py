@@ -8,8 +8,10 @@ import typer
 
 from gepa.utils.config import Config, ConfigLoader
 from gepa.utils.logging_utils import Logger
-from gepa.sim import BulletSimEnv
+from gepa.sim import BulletSimEnv, GymAdapterEnv
 from gepa.models import TorchBehaviorModel
+from gepa.models.diffusion_policy_adapter import DiffusionPolicyAdapter
+from gepa.models.world_model import SimpleMLPDynamicsModel
 from gepa.gepa import GEPAOptimizer, Prompt
 from gepa.gepa.llm_providers import MockLLM
 
@@ -51,11 +53,25 @@ def make_env(cfg: Config):
         if RoboSuiteEnv is None:
             raise RuntimeError("robosuite backend requested but not installed")
         return RoboSuiteEnv(task="Lift", robots="Panda", horizon=cfg.simulation.max_steps_per_episode, has_renderer=cfg.simulation.gui)
+    elif cfg.simulation.backend == "gym":
+        if not cfg.gym.entry_point:
+            raise ValueError("gym backend selected but gym.entry_point is empty in config")
+        return GymAdapterEnv(
+            entry_point=cfg.gym.entry_point,
+            env_kwargs=cfg.gym.env_kwargs,
+            obs_key=cfg.gym.obs_key,
+        )
     else:
         raise ValueError(f"Unknown backend {cfg.simulation.backend}")
 
 
-def make_model(cfg: Config, extra_input_dim: int = 0) -> TorchBehaviorModel:
+def make_model(cfg: Config, extra_input_dim: int = 0):
+    if cfg.model.use_diffusion_policy:
+        return DiffusionPolicyAdapter(
+            policy_ctor_path=cfg.model.dp_ctor_path,
+            ctor_kwargs=cfg.model.dp_ctor_kwargs,
+            device="cpu",
+        )
     return TorchBehaviorModel(
         architecture=cfg.model.architecture,
         input_dim=cfg.model.input_dim,
@@ -154,7 +170,22 @@ def run(
         cfg.model.action_dim = int(env.action_dim)
 
     extra_input_dim = 128 if (isinstance(env, BulletSimEnv) and cfg.simulation.enable_camera) else 0
+    # Add world model rollout feature dim if enabled (state_dim * horizon)
+    if cfg.world_model.enabled:
+        # After reset we computed obs_dim; state dim == obs_dim for our runner
+        wm_feat_dim = int(cfg.model.input_dim) * int(max(0, cfg.world_model.rollout_horizon))
+        extra_input_dim += wm_feat_dim
     model = make_model(cfg, extra_input_dim=extra_input_dim)
+    # Optional: lightweight world model for features
+    world_model = None
+    if cfg.world_model.enabled:
+        world_model = SimpleMLPDynamicsModel(
+            state_dim=cfg.model.input_dim,
+            action_dim=cfg.model.action_dim,
+            hidden_dim=cfg.world_model.hidden_dim,
+            learning_rate=cfg.world_model.learning_rate,
+            weight_decay=cfg.world_model.weight_decay,
+        )
 
     vision_encoder = SmallCNN(out_dim=extra_input_dim) if extra_input_dim > 0 else None
 
@@ -223,6 +254,16 @@ def run(
                 if rgb is not None:
                     img = torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1).unsqueeze(0) / 255.0
                     extra = vision_encoder(img)
+            # Optional world model rollout features
+            if world_model is not None:
+                def _policy_on_state(s: torch.Tensor) -> torch.Tensor:
+                    return model.select_action(s).action
+                wm_feat = world_model.rollout_horizon(obs_t, _policy_on_state, horizon=cfg.world_model.rollout_horizon)
+                if wm_feat is not None and wm_feat.numel() > 0:
+                    if extra is None:
+                        extra = wm_feat
+                    else:
+                        extra = torch.cat([extra, wm_feat], dim=-1)
             action = model.select_action(obs_t, prompt=active_prompt, extra_features=extra).action.squeeze(0).numpy()
             actions.append(action.copy())
             result = env.step(action)
@@ -236,6 +277,26 @@ def run(
                 break
         logger.log_trajectory(f"episode_{ep}", observations, actions, rewards)
         logger.log_metrics(ep, {"episode_reward": float(sum(rewards)), "prompt_len": len(active_prompt or "")})
+
+        # Train world model on collected transitions from this episode
+        if world_model is not None and len(observations) > 1:
+            obs_arr = np.array(observations, dtype=np.float32)
+            act_arr = np.array(actions, dtype=np.float32)
+            # align next-state length
+            next_obs_arr = obs_arr[1:]
+            obs_arr = obs_arr[:-1]
+            act_arr = act_arr[:-1]
+            obs_t_all = torch.tensor(obs_arr, dtype=torch.float32)
+            act_t_all = torch.tensor(act_arr, dtype=torch.float32)
+            next_t_all = torch.tensor(next_obs_arr, dtype=torch.float32)
+            num = obs_t_all.shape[0]
+            steps = min(cfg.world_model.train_steps_per_episode, max(1, num))
+            bs = max(1, min(cfg.world_model.batch_size, num))
+            for step in range(steps):
+                idx = np.random.choice(num, size=bs, replace=num < bs)
+                metrics = world_model.train_step(obs_t_all[idx], act_t_all[idx], next_t_all[idx])
+                if (step + 1) % 10 == 0:
+                    logger.log_metrics(step, metrics)
 
     # Optional BC step on collected buffer
     if train_bc_steps > 0 and len(buffer_obs) > 0:

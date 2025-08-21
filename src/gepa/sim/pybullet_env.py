@@ -118,13 +118,18 @@ class BulletSimEnv:
             nearVal=0.01,
             farVal=10.0,
         )
-        _, _, rgb, _, _ = p.getCameraImage(
+        renderer = p.ER_BULLET_HARDWARE_OPENGL if self.gui else p.ER_TINY_RENDERER
+        w, h, rgba, _, _ = p.getCameraImage(
             width=self.camera_width,
             height=self.camera_height,
             viewMatrix=view_matrix,
             projectionMatrix=proj_matrix,
+            renderer=renderer,
         )
-        rgb = np.array(rgb, dtype=np.uint8)[:, :, :3]
+        arr = np.array(rgba, dtype=np.uint8)
+        if arr.ndim == 1:
+            arr = arr.reshape((h, w, 4))
+        rgb = arr[..., :3]
         return rgb
 
     def apply_action(self, action: np.ndarray) -> None:

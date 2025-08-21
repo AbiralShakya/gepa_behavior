@@ -80,11 +80,16 @@ class TorchBehaviorModel(BaseBehaviorModel):
             if self.architecture == "mlp":
                 x = observation.to(self.device)
                 parts = [x]
-                if self.conditioner is not None and prompt is not None:
-                    emb = self._cond_embed([prompt])  # [1, D]
+                if self.conditioner is not None:
+                    if prompt is not None:
+                        emb = self._cond_embed([prompt])  # [B, D]
+                    else:
+                        emb = torch.zeros((x.shape[0], self.prompt_embed_dim), device=self.device)
                     parts.append(emb)
                 if extra_features is not None:
                     parts.append(extra_features.to(self.device))
+                elif self.extra_input_dim and self.extra_input_dim > 0:
+                    parts.append(torch.zeros((x.shape[0], int(self.extra_input_dim)), device=self.device))
                 x_cat = torch.cat(parts, dim=-1)
                 logits = self.policy(x_cat)
             else:
@@ -105,11 +110,16 @@ class TorchBehaviorModel(BaseBehaviorModel):
         if self.architecture == "mlp":
             x = obs.to(self.device)
             parts = [x]
-            if self.conditioner is not None and prompts is not None:
-                emb = self.conditioner(prompts)
+            if self.conditioner is not None:
+                if prompts is not None:
+                    emb = self.conditioner(prompts)
+                else:
+                    emb = torch.zeros((x.shape[0], self.prompt_embed_dim), device=self.device)
                 parts.append(emb)
             if extra_features is not None:
                 parts.append(extra_features.to(self.device))
+            elif self.extra_input_dim and self.extra_input_dim > 0:
+                parts.append(torch.zeros((x.shape[0], int(self.extra_input_dim)), device=self.device))
             x_cat = torch.cat(parts, dim=-1)
             pred = self.policy(x_cat)
         else:
