@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, Optional
 import yaml
 import copy
@@ -65,10 +65,10 @@ class ExperimentConfig:
 
 @dataclass
 class Config:
-    simulation: SimulationConfig = SimulationConfig()
-    model: ModelConfig = ModelConfig()
-    gepa: GEPAConfig = GEPAConfig()
-    experiment: ExperimentConfig = ExperimentConfig()
+    simulation: SimulationConfig = field(default_factory=SimulationConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    gepa: GEPAConfig = field(default_factory=GEPAConfig)
+    experiment: ExperimentConfig = field(default_factory=ExperimentConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

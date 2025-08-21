@@ -11,8 +11,10 @@ src/gepa/models/behavior_transformer.py
 src/gepa/models/conditioning.py
 src/gepa/models/networks.py
 src/gepa/models/trainer.py
+src/gepa/models/vision.py
 src/gepa/sim/__init__.py
 src/gepa/sim/pybullet_env.py
+src/gepa/sim/robosuite_env.py
 src/gepa/utils/checkpoint.py
 src/gepa/utils/config.py
 src/gepa/utils/logging_utils.py

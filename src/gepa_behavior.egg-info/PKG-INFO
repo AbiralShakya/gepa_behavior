@@ -7,12 +7,48 @@ Description-Content-Type: text/markdown
 
 # gepa_behavior
 
-r&d for adopting gepa style feedback to LLMs for for behavior models for robot simulation
+R&D for GEPA-style language-guided large behavior models in robot simulation.
 
-need to figure out a lot of stuff. 
+## Hardware recommendations
+- CPU: 8+ cores recommended (Ryzen 7 / Intel i7 or better)
+- RAM: 32 GB recommended for vision + multi-env; 16 GB minimum for state-only
+- GPU (training/vision/transformers): NVIDIA RTX 3060 (12GB) minimum, RTX 4090 / A6000 recommended; CUDA 12.x
+- Disk: 20+ GB free for logs/checkpoints
+- OS: Linux or macOS; for GPU training, Linux with recent NVIDIA driver is recommended
 
-immediate next steps
-1) setup sim environment (low cost)
-2) map out initial research outline for converting natural language prompt optimization of gepa to behavior ~> maybe could be relevant w/ fewer shot learning after using trad behavior models on baseline task
-3) get trad behavior model sim working, jack from github
-4) implement initial gepa ideas i have (this is the whole project)
+## Backends
+- PyBullet (default): fast, lightweight; supports headless + optional RGB camera
+- RoboSuite (optional): high-fidelity Mujoco-based manipulation tasks
+
+## Install
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# optional: RoboSuite
+pip install -r requirements-robosuite.txt
+# editable install
+pip install -e .
+```
+
+## Run (PyBullet)
+```bash
+python -m gepa.experiment.runner run --config configs/default.yaml --episodes 2 --steps 200 --gepa-iters 2
+```
+
+## Run (RoboSuite)
+```bash
+python -m gepa.experiment.runner run --backend robosuite --episodes 2 --steps 200
+```
+
+## Notes
+- Use `--prompt` to override the prompt; `--camera` to enable PyBullet RGB frames.
+- For GPU training, ensure CUDA and PyTorch with CUDA are installed.
+
+
+
+/Users/abiralshakya/Documents/behavior/gepa_behavior/requirements.txt
+
+python3 -m gepa.experiment.runner run --config configs/default.yaml --episodes 2 --steps 200 --gepa-iters 0python3 -m venv new_behavior_env
+source new_behavior_env/bin/activate
+pip install -r requirements.txt
+pip install -e .

@@ -1,7 +1,7 @@
 simulation:
   timestep: 0.0041666667
   gravity: -9.81
-  gui: false
+  gui: true
   max_steps_per_episode: 1000
   robot_urdf: kuka_iiwa/model.urdf
   base_position: [0.0, 0.0, 0.0]

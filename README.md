@@ -36,3 +36,12 @@ python -m gepa.experiment.runner run --backend robosuite --episodes 2 --steps 20
 ## Notes
 - Use `--prompt` to override the prompt; `--camera` to enable PyBullet RGB frames.
 - For GPU training, ensure CUDA and PyTorch with CUDA are installed.
+
+
+
+/Users/abiralshakya/Documents/behavior/gepa_behavior/requirements.txt
+
+python3 -m gepa.experiment.runner run --config configs/default.yaml --episodes 2 --steps 200 --gepa-iters 0python3 -m venv new_behavior_env
+source new_behavior_env/bin/activate
+pip install -r requirements.txt
+pip install -e .

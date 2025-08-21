@@ -6,6 +6,7 @@ import random
 
 from .llm_providers import LLMProvider
 
+#python -m gepa.experiment.runner run --config configs/default.yaml --episodes 2 --steps 200 --gepa-iters 0
 
 @dataclass
 class Prompt:
